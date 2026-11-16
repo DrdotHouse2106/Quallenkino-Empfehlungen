@@ -165,8 +165,8 @@ namespace Jellyfin.Plugin.LocalRecs.ScheduledTasks
                 var now = DateTime.UtcNow;
                 foreach (var (userId, recs) in stored)
                 {
-                    _feedback.RecordRecommended(userId, FeedbackStore.Movies, recs.Movies.Select(id => (id.ToString("N"), _libraryManager.GetItemById(id)?.Name ?? string.Empty)), now);
-                    _feedback.RecordRecommended(userId, FeedbackStore.Series, recs.Series.Select(id => (id.ToString("N"), _libraryManager.GetItemById(id)?.Name ?? string.Empty)), now);
+                    _feedback.RecordRecommended(userId, FeedbackStore.Movies, recs.Movies.Select(FeedbackItem), now);
+                    _feedback.RecordRecommended(userId, FeedbackStore.Series, recs.Series.Select(FeedbackItem), now);
                 }
 
                 _feedback.SaveIfDirty();
@@ -287,6 +287,14 @@ namespace Jellyfin.Plugin.LocalRecs.ScheduledTasks
             {
                 _logger.LogWarning(ex, "Filmreihen konnten nicht abgeglichen werden");
             }
+        }
+
+        // Schlüssel, Titel und stabile Referenz (TMDB/IMDb, sonst Titel+Jahr) für die Auswertung
+        private (string Key, string Title, string? Ref) FeedbackItem(Guid id)
+        {
+            var item = _libraryManager.GetItemById(id);
+            return (id.ToString("N"), item?.Name ?? string.Empty, item == null ? null : FeedbackStore.StableRef(
+                item.GetProviderId(MetadataProvider.Tmdb), item.GetProviderId(MetadataProvider.Imdb), item.Name, item.ProductionYear));
         }
     }
 }

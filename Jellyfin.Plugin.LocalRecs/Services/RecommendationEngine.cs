@@ -329,6 +329,17 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                     continue;
                 }
 
+                // Gestartet, aber gleich wieder beendet (unter 5 % speichert Jellyfin keine Position): eine Weile nicht
+                // vorschlagen. Mehrere solche Starts sind eher ein technisches Problem (z. B. kein Ton) als Interesse
+                if (userData != null && itemMetadata.Type != LocalMediaType.Series
+                    && AbortedStart.IsAborted(userData.PlayCount, userData.Played, userData.PlaybackPositionTicks, userData.LastPlayedDate, DateTime.UtcNow, config.AbortedStartPauseDays))
+                {
+                    _logger.LogDebug(
+                        userData.PlayCount >= 2 ? "Mehrfach gestartet ohne Fortschritt (technisches Problem?), vorerst nicht empfohlen: {Name}" : "Gerade abgebrochen, vorerst nicht empfohlen: {Name}",
+                        itemMetadata.Name);
+                    continue;
+                }
+
                 candidates.Add(itemId);
             }
 

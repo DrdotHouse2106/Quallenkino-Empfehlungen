@@ -89,5 +89,63 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
 
             store.GetReport(3650, Now).Sections.Sum(s => s.Recommended).Should().Be(0);
         }
+
+        [Fact]
+        public void Paused_AfterGraceDaysInTheRow_ForPauseDays()
+        {
+            var store = new FeedbackStore(NullLogger<FeedbackStore>.Instance, _path);
+            for (var day = 0; day <= 14; day++)
+            {
+                store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("a", "A") }, Now.AddDays(day));
+            }
+
+            // b stand nur kurz in der Zeile
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("b", "B") }, Now);
+
+            store.GetPaused(_user, FeedbackStore.Movies, Now.AddDays(13), 14, 35).Should().BeEmpty();
+            store.GetPaused(_user, FeedbackStore.Movies, Now.AddDays(15), 14, 35).Should().BeEquivalentTo(new[] { "a" });
+            store.GetPaused(_user, FeedbackStore.Movies, Now.AddDays(50), 14, 35).Should().BeEmpty("die Pause ist vorbei");
+            store.GetPaused(_user, FeedbackStore.Movies, Now.AddDays(15), 14, 0).Should().BeEmpty("0 = aus");
+
+            // Nach der Pause wieder empfohlen: neue Zählung
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("a", "A") }, Now.AddDays(50));
+            store.GetShownSince(_user, FeedbackStore.Movies, Now.AddDays(50))["a"].Should().Be(Now.AddDays(50));
+        }
+
+        [Fact]
+        public void NewItemId_KeepsHistory_ByStableReference()
+        {
+            var store = new FeedbackStore(NullLogger<FeedbackStore>.Instance, _path);
+            var reference = FeedbackStore.StableRef("603", null, "Matrix", 1999);
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("alt", "Matrix", reference) }, Now.AddDays(-20));
+
+            // Datei ausgetauscht: neue Item-ID, gleiche TMDB-ID
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("neu", "Matrix", reference) }, Now);
+            store.GetReport(30, Now).Sections.Single(s => s.Section == FeedbackStore.Movies).Recommended.Should().Be(1, "kein zweiter Eintrag");
+            store.GetShownSince(_user, FeedbackStore.Movies, Now).Should().ContainKey("neu").And.NotContainKey("alt");
+
+            // Treffer unter der neuen ID zählt für die frühere Empfehlung
+            store.RecordWatched(_user, FeedbackStore.Movies, new[] { "noch-neuer" }, Now, "Matrix", reference).Should().BeTrue();
+            store.GetReport(30, Now).RecentHits.Single().RecommendedAt.Should().Be(Now.AddDays(-20));
+        }
+
+        [Fact]
+        public void LegacyEntriesWithoutReference_AreMatchedByTitle()
+        {
+            var store = new FeedbackStore(NullLogger<FeedbackStore>.Instance, _path);
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("alt1", "Film"), ("alt2", "Film") }, Now.AddDays(-10));
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("neu", "Film", FeedbackStore.StableRef(null, "tt1", "Film", 2020)) }, Now);
+
+            store.GetReport(30, Now).Sections.Single(s => s.Section == FeedbackStore.Movies).Recommended.Should().Be(1, "doppelte Einträge zusammengeführt");
+        }
+
+        [Theory]
+        [InlineData("603", "tt0133093", "tmdb:603")]
+        [InlineData(null, "TT0133093", "imdb:tt0133093")]
+        [InlineData(null, null, "title:matrix|1999")]
+        public void StableRef_PrefersTmdbThenImdbThenTitle(string? tmdb, string? imdb, string expected)
+        {
+            FeedbackStore.StableRef(tmdb, imdb, " Matrix ", 1999).Should().Be(expected);
+        }
     }
 }

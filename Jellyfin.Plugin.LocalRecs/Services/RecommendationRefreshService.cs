@@ -304,6 +304,14 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                 .ToDictionary(kv => Guid.Parse(kv.Key), kv => kv.Value);
         }
 
+        private HashSet<Guid>? Paused(Guid userId, string section, DateTime now, PluginConfiguration config)
+        {
+            return _feedback?.GetPaused(userId, section, now, config.IgnoredRecommendationDays, config.IgnoredRecommendationPauseDays)
+                .Select(k => Guid.TryParse(k, out var id) ? id : Guid.Empty)
+                .Where(id => id != Guid.Empty)
+                .ToHashSet();
+        }
+
         private (List<ScoredRecommendation> Movies, List<ScoredRecommendation> Tv) GenerateForProfile(
             Guid userId,
             UserProfile? profile,
@@ -354,8 +362,8 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
                 // Lange ignorierte Titel nach hinten, höchstens ein Drittel aus demselben Genre
                 var now = DateTime.UtcNow;
-                movieRecs = RecommendationReranker.Rerank(movieRecs, metadata, ShownSince(userId, FeedbackStore.Movies, now), now, config.IgnoredRecommendationDays, config.MovieRecommendationCount);
-                tvRecs = RecommendationReranker.Rerank(tvRecs, metadata, ShownSince(userId, FeedbackStore.Series, now), now, config.IgnoredRecommendationDays, config.TvRecommendationCount);
+                movieRecs = RecommendationReranker.Rerank(movieRecs, metadata, ShownSince(userId, FeedbackStore.Movies, now), now, config.IgnoredRecommendationDays, config.MovieRecommendationCount, Paused(userId, FeedbackStore.Movies, now, config));
+                tvRecs = RecommendationReranker.Rerank(tvRecs, metadata, ShownSince(userId, FeedbackStore.Series, now), now, config.IgnoredRecommendationDays, config.TvRecommendationCount, Paused(userId, FeedbackStore.Series, now, config));
 
                 // Filmreihen: nächster ungesehener Teil nach vorne
                 var nextParts = _collections != null && config.EnableCollectionNextParts

@@ -17,6 +17,11 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         public const float MinSimilarity = 0.35f;
 
         /// <summary>
+        /// At most this many recommendations get the same watched title as reason (more variety).
+        /// </summary>
+        public const int MaxPerSource = 3;
+
+        /// <summary>
         /// Builds the reason text for a watched title.
         /// </summary>
         /// <param name="watchedTitle">Title of the watched item.</param>
@@ -50,6 +55,8 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                 return;
             }
 
+            // Derselbe gesehene Titel höchstens MaxPerSource-mal, sonst der nächstähnliche (über der Mindestähnlichkeit)
+            var used = new Dictionary<Guid, int>();
             foreach (var recommendation in recommendations.Where(r => r.Reason == null))
             {
                 if (!embeddings.TryGetValue(recommendation.ItemId, out var embedding))
@@ -58,13 +65,14 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                 }
 
                 var best = sources
-                    .Where(s => s.Id != recommendation.ItemId)
-                    .Select(s => (s.Name, Similarity: VectorMath.CosineSimilarity(embedding.Vector, s.Vector)))
+                    .Where(s => s.Id != recommendation.ItemId && used.GetValueOrDefault(s.Id) < MaxPerSource)
+                    .Select(s => (s.Id, s.Name, Similarity: VectorMath.CosineSimilarity(embedding.Vector, s.Vector)))
                     .OrderByDescending(s => s.Similarity)
                     .FirstOrDefault();
                 if (best.Name != null && best.Similarity >= MinSimilarity)
                 {
                     recommendation.Reason = BecauseYouWatched(best.Name);
+                    used[best.Id] = used.GetValueOrDefault(best.Id) + 1;
                 }
             }
         }

@@ -80,6 +80,7 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         /// <param name="now">Current time (UTC).</param>
         /// <param name="graceDays">Days without penalty (0 = off).</param>
         /// <param name="limit">Length of the row.</param>
+        /// <param name="paused">Items held back for now (see <see cref="FeedbackStore.GetPaused"/>).</param>
         /// <returns>The final recommendations.</returns>
         public static List<ScoredRecommendation> Rerank(
             IEnumerable<ScoredRecommendation> scored,
@@ -87,7 +88,8 @@ namespace Jellyfin.Plugin.LocalRecs.Services
             IReadOnlyDictionary<Guid, DateTime>? shownSince,
             DateTime now,
             int graceDays,
-            int limit)
+            int limit,
+            IReadOnlySet<Guid>? paused = null)
         {
             ArgumentNullException.ThrowIfNull(scored);
             ArgumentNullException.ThrowIfNull(metadata);
@@ -96,7 +98,9 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                 return new List<ScoredRecommendation>();
             }
 
+            // Lange ignorierte Titel machen eine Weile Platz (Rotation)
             var adjusted = scored
+                .Where(r => paused == null || !paused.Contains(r.ItemId))
                 .Select(r =>
                 {
                     if (shownSince == null || !shownSince.TryGetValue(r.ItemId, out var since))

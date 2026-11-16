@@ -65,6 +65,30 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
             UserProfileService.IsAbandoned(position, runtime, Now.AddDays(-daysAgo), Now).Should().Be(expected);
         }
 
+        [Fact]
+        public void PausedTitles_MakeRoomForOthers()
+        {
+            var a = Guid.NewGuid();
+            var b = Guid.NewGuid();
+            var metadata = Metadata((a, "Drama"), (b, "Komödie"));
+            var scored = new[] { new ScoredRecommendation(a, 0.9f), new ScoredRecommendation(b, 0.7f) };
+
+            RecommendationReranker.Rerank(scored, metadata, null, Now, 14, 10, new HashSet<Guid> { a }).Select(r => r.ItemId).Should().Equal(b);
+        }
+
+        [Theory]
+        [InlineData(1, false, 0L, 3, true)]
+        [InlineData(5, false, 0L, 3, true)]
+        [InlineData(1, false, 0L, 30, false)]
+        [InlineData(1, true, 0L, 3, false)]
+        [InlineData(1, false, 100L, 3, false)]
+        [InlineData(0, false, 0L, 3, false)]
+        public void AbortedStart_IsHeldBackForAFewWeeks(int playCount, bool played, long position, int daysAgo, bool expected)
+        {
+            AbortedStart.IsAborted(playCount, played, position, Now.AddDays(-daysAgo), Now, 28).Should().Be(expected);
+            AbortedStart.IsAborted(playCount, played, position, Now.AddDays(-daysAgo), Now, 0).Should().BeFalse("0 = aus");
+        }
+
         private static Dictionary<Guid, MediaItemMetadata> Metadata(params (Guid Id, string Genre)[] items)
         {
             return items.ToDictionary(x => x.Id, x =>

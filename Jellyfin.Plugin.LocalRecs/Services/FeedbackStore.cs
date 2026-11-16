@@ -48,6 +48,29 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         }
 
         /// <summary>
+        /// Stable reference of a movie or series that survives a new Jellyfin item ID: TMDB ID, else IMDb ID, else title and year.
+        /// </summary>
+        /// <param name="tmdbId">TMDB ID.</param>
+        /// <param name="imdbId">IMDb ID.</param>
+        /// <param name="title">Title.</param>
+        /// <param name="year">Production year.</param>
+        /// <returns>The reference, or null without any usable value.</returns>
+        public static string? StableRef(string? tmdbId, string? imdbId, string? title, int? year)
+        {
+            if (!string.IsNullOrWhiteSpace(tmdbId))
+            {
+                return "tmdb:" + tmdbId.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(imdbId))
+            {
+                return "imdb:" + imdbId.Trim().ToLowerInvariant();
+            }
+
+            return string.IsNullOrWhiteSpace(title) ? null : "title:" + title.Trim().ToLowerInvariant() + "|" + year;
+        }
+
+        /// <summary>
         /// Records that items were recommended to a user (first recommendation date is kept).
         /// </summary>
         /// <param name="userId">User ID.</param>
@@ -57,10 +80,24 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         public void RecordRecommended(Guid userId, string section, IEnumerable<(string Key, string Title)> items, DateTime now)
         {
             ArgumentNullException.ThrowIfNull(items);
+            RecordRecommended(userId, section, items.Select(i => (i.Key, i.Title, (string?)null)), now);
+        }
+
+        /// <summary>
+        /// Records that items were recommended to a user. With a stable reference (<see cref="StableRef"/>) the history
+        /// survives a new item ID, e.g. after a file was replaced or converted and Jellyfin re-created the item.
+        /// </summary>
+        /// <param name="userId">User ID.</param>
+        /// <param name="section">Section.</param>
+        /// <param name="items">Item keys, display titles and stable references (optional).</param>
+        /// <param name="now">Current time (UTC).</param>
+        public void RecordRecommended(Guid userId, string section, IEnumerable<(string Key, string Title, string? Ref)> items, DateTime now)
+        {
+            ArgumentNullException.ThrowIfNull(items);
 
             lock (_lock)
             {
-                foreach (var (key, title) in items)
+                foreach (var (key, title, reference) in items)
                 {
                     if (string.IsNullOrEmpty(key))
                     {
@@ -70,9 +107,17 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                     var id = Id(userId, section, key);
                     if (!_data.Recommended.TryGetValue(id, out var entry))
                     {
-                        _data.Recommended[id] = new RecommendedEntry { UserId = userId, Section = section, Key = key, Title = title, Date = now, ShownSince = now, LastRecommended = now };
-                        _dirty = true;
-                        continue;
+                        entry = Rekey(userId, section, key, title, reference);
+                        if (entry == null)
+                        {
+                            _data.Recommended[id] = new RecommendedEntry { UserId = userId, Section = section, Key = key, Title = title, Ref = reference, Date = now, ShownSince = now, LastRecommended = now };
+                            _dirty = true;
+                            continue;
+                        }
+                    }
+                    else if (reference != null && entry.Ref == null)
+                    {
+                        entry.Ref = reference;
                     }
 
                     // War der Titel eine Weile nicht in der Zeile, beginnt die Zählung neu
@@ -98,12 +143,31 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         /// <param name="now">Time of watching (UTC).</param>
         /// <returns>True if a new hit was recorded.</returns>
         public bool RecordWatched(Guid userId, string section, IEnumerable<string?> keys, DateTime now)
+            => RecordWatched(userId, section, keys, now, null, null);
+
+        /// <summary>
+        /// Records a hit; with a stable reference also for a recommendation stored under an older item ID.
+        /// </summary>
+        /// <param name="userId">User ID.</param>
+        /// <param name="section">Section.</param>
+        /// <param name="keys">Keys of the watched item.</param>
+        /// <param name="now">Time of watching (UTC).</param>
+        /// <param name="title">Display title (fallback for entries without reference).</param>
+        /// <param name="reference">Stable reference (<see cref="StableRef"/>).</param>
+        /// <returns>True if a new hit was recorded.</returns>
+        public bool RecordWatched(Guid userId, string section, IEnumerable<string?> keys, DateTime now, string? title, string? reference)
         {
             ArgumentNullException.ThrowIfNull(keys);
 
             lock (_lock)
             {
-                foreach (var key in keys.Where(k => !string.IsNullOrEmpty(k)))
+                var list = keys.Where(k => !string.IsNullOrEmpty(k)).ToList();
+                if (list.Count > 0 && (title != null || reference != null) && !list.Any(k => _data.Recommended.ContainsKey(Id(userId, section, k!))))
+                {
+                    Rekey(userId, section, list[0]!, title ?? string.Empty, reference);
+                }
+
+                foreach (var key in list)
                 {
                     if (_data.Recommended.TryGetValue(Id(userId, section, key!), out var entry) && entry.WatchedAt == null && entry.Date <= now)
                     {
@@ -159,6 +223,48 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
                 return result;
             }
+        }
+
+        /// <summary>
+        /// Gets the titles that stood in the row for <paramref name="graceDays"/> days without being watched and are now
+        /// held back for <paramref name="pauseDays"/> days, so that the row rotates.
+        /// </summary>
+        /// <param name="userId">User ID.</param>
+        /// <param name="section">Section.</param>
+        /// <param name="now">Current time (UTC).</param>
+        /// <param name="graceDays">Days in the row before the pause (0 = off).</param>
+        /// <param name="pauseDays">Length of the pause in days (0 = off).</param>
+        /// <returns>Keys of the paused items.</returns>
+        public HashSet<string> GetPaused(Guid userId, string section, DateTime now, int graceDays, int pauseDays)
+        {
+            var result = new HashSet<string>();
+            if (graceDays <= 0 || pauseDays <= 0)
+            {
+                return result;
+            }
+
+            lock (_lock)
+            {
+                foreach (var entry in _data.Recommended.Values)
+                {
+                    if (entry.UserId != userId || entry.Section != section || entry.WatchedAt != null)
+                    {
+                        continue;
+                    }
+
+                    var since = entry.ShownSince == default ? entry.Date : entry.ShownSince;
+                    var last = entry.LastRecommended == default ? entry.Date : entry.LastRecommended;
+                    var pauseStart = since.AddDays(graceDays);
+
+                    // Nur, wenn der Titel wirklich so lange (bis auf einen Tag) ununterbrochen in der Zeile stand
+                    if (last >= pauseStart.AddDays(-1) && now >= pauseStart && now < pauseStart.AddDays(pauseDays))
+                    {
+                        result.Add(entry.Key);
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -244,6 +350,42 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
         private static string Id(Guid userId, string section, string key) => userId.ToString("N") + "|" + section + "|" + key;
 
+        // Eintrag unter einer früheren Item-ID (gleiche Referenz bzw. bei alten Einträgen ohne Referenz gleicher Titel)
+        // auf die neue ID umziehen; mehrere alte Einträge desselben Titels werden zusammengeführt. Aufruf unter _lock.
+        private RecommendedEntry? Rekey(Guid userId, string section, string key, string title, string? reference)
+        {
+            if (reference == null && string.IsNullOrEmpty(title))
+            {
+                return null;
+            }
+
+            var matches = _data.Where(userId, section, e => e.Key != key
+                && ((reference != null && e.Ref == reference)
+                    || (e.Ref == null && title.Length > 0 && string.Equals(e.Title, title, StringComparison.OrdinalIgnoreCase))));
+            if (matches.Count == 0)
+            {
+                return null;
+            }
+
+            var keep = matches.OrderByDescending(m => m.Value.WatchedAt != null).ThenBy(m => m.Value.Date).First().Value;
+            foreach (var (id, entry) in matches)
+            {
+                _data.Recommended.Remove(id);
+                if (!ReferenceEquals(entry, keep))
+                {
+                    keep.Date = entry.Date < keep.Date ? entry.Date : keep.Date;
+                    keep.LastRecommended = entry.LastRecommended > keep.LastRecommended ? entry.LastRecommended : keep.LastRecommended;
+                }
+            }
+
+            keep.Key = key;
+            keep.Ref ??= reference;
+            _data.Recommended[Id(userId, section, key)] = keep;
+            _dirty = true;
+            _logger.LogDebug("Auswertung: {Title} unter neuer Item-ID weitergeführt", keep.Title);
+            return keep;
+        }
+
         private void SaveSnapshot()
         {
             string json;
@@ -311,6 +453,9 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
             /// <summary>Gets or sets the title.</summary>
             public string Title { get; set; } = string.Empty;
+
+            /// <summary>Gets or sets the stable reference (TMDB/IMDb ID or title and year), see <see cref="StableRef"/>.</summary>
+            public string? Ref { get; set; }
 
             /// <summary>Gets or sets the date of the first recommendation (UTC).</summary>
             public DateTime Date { get; set; }
@@ -393,6 +538,9 @@ namespace Jellyfin.Plugin.LocalRecs.Services
             public Dictionary<string, RecommendedEntry> Recommended { get; set; } = new Dictionary<string, RecommendedEntry>();
 
             public List<HitEntry> Hits { get; set; } = new List<HitEntry>();
+
+            public List<KeyValuePair<string, RecommendedEntry>> Where(Guid userId, string section, Func<RecommendedEntry, bool> predicate)
+                => Recommended.Where(kv => kv.Value.UserId == userId && kv.Value.Section == section && predicate(kv.Value)).ToList();
         }
     }
 }

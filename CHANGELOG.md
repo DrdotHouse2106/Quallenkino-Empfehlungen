@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [12.62.0] - 2026-11-16
+
+### Added
+
+- Rotation: a title that stood in the row for `IgnoredRecommendationDays` (14) without being watched is held back for `IgnoredRecommendationPauseDays` (new, default 35, 0 = off).
+- Movies that were started but stopped right away (play count, no saved position, not played – Jellyfin keeps no position below 5 %) are not recommended for `AbortedStartPauseDays` (new, default 28, 0 = off). They count neither as interest nor as dislike; repeated starts are logged as a likely technical problem.
+- Evaluation (`feedback.json`): entries keep a stable reference (TMDB ID, else IMDb ID, else title and year). After a new item ID (file replaced or converted and re-scanned) the history and hits continue under the new ID; legacy entries without reference are matched by title and duplicates merged.
+
+### Changed
+
+- Reason „Weil du „…“ geschaut hast“: the same watched title at most three times per row, then the next most similar one.
 
 ### Security
 

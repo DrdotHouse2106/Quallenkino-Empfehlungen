@@ -95,5 +95,34 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
             recs[0].Reason.Should().Be("Weil du „Frieren“ geschaut hast");
             recs[1].Reason.Should().BeNull();
         }
+
+        [Fact]
+        public void Reason_SameWatchedTitleAtMostThreeTimes()
+        {
+            var watchedA = Guid.NewGuid();
+            var watchedB = Guid.NewGuid();
+            var candidates = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToList();
+            var embeddings = new Dictionary<Guid, ItemEmbedding>
+            {
+                [watchedA] = new ItemEmbedding(watchedA, new[] { 1f, 0f }),
+                [watchedB] = new ItemEmbedding(watchedB, new[] { 0.8f, 0.6f })
+            };
+            foreach (var c in candidates)
+            {
+                embeddings[c] = new ItemEmbedding(c, new[] { 1f, 0.05f });
+            }
+
+            var metadata = new Dictionary<Guid, MediaItemMetadata>
+            {
+                [watchedA] = new MediaItemMetadata(watchedA, "A", MediaType.Movie),
+                [watchedB] = new MediaItemMetadata(watchedB, "B", MediaType.Movie)
+            };
+            var recs = candidates.Select(c => new ScoredRecommendation(c, 0.5f)).ToList();
+
+            RecommendationExplainer.Explain(recs, new[] { watchedA, watchedB }, embeddings, metadata);
+
+            recs.Count(r => r.Reason == "Weil du „A“ geschaut hast").Should().Be(3);
+            recs.Count(r => r.Reason == "Weil du „B“ geschaut hast").Should().Be(2);
+        }
     }
 }

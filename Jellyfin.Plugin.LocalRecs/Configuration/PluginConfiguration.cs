@@ -29,6 +29,8 @@ namespace Jellyfin.Plugin.LocalRecs.Configuration
             MinCommunityRating = 5.0;
             RatingQualityWeight = 0.15;
             IgnoredRecommendationDays = 14;
+            IgnoredRecommendationPauseDays = 35;
+            AbortedStartPauseDays = 28;
             EnableCollectionNextParts = true;
             ShowRecommendationReason = true;
             WorldDefinitions = Worlds.WorldDefinition.DefaultDefinitions;
@@ -341,6 +343,18 @@ namespace Jellyfin.Plugin.LocalRecs.Configuration
         /// (2 % per day, down to half the score). 0 = off. Default: 14.
         /// </summary>
         public int IgnoredRecommendationDays { get; set; }
+
+        /// <summary>
+        /// Gets or sets for how many days a title is held back after it stood <see cref="IgnoredRecommendationDays"/> days
+        /// in the row without being watched (rotation). 0 = off. Default: 35.
+        /// </summary>
+        public int IgnoredRecommendationPauseDays { get; set; }
+
+        /// <summary>
+        /// Gets or sets for how many days a movie is not recommended after it was started but stopped right away
+        /// (play count without progress – Jellyfin keeps no position below 5 %). 0 = off. Default: 28.
+        /// </summary>
+        public int AbortedStartPauseDays { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the next unwatched part of a started film series (Jellyfin collection)

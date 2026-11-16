@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -197,12 +198,26 @@ namespace Jellyfin.Plugin.LocalRecs.LiveTv
                 return;
             }
 
-            var (section, key) = e.Item switch
+            MediaBrowser.Controller.Entities.BaseItem? target = e.Item switch
             {
-                MediaBrowser.Controller.Entities.Movies.Movie movie => (FeedbackStore.Movies, movie.Id.ToString("N")),
-                MediaBrowser.Controller.Entities.TV.Episode episode => (FeedbackStore.Series, episode.SeriesId.ToString("N")),
-                _ => (null, null)
+                MediaBrowser.Controller.Entities.Movies.Movie movie => movie,
+                MediaBrowser.Controller.Entities.TV.Episode episode => episode.Series,
+                _ => null
             };
+            var section = e.Item switch
+            {
+                MediaBrowser.Controller.Entities.Movies.Movie => FeedbackStore.Movies,
+                MediaBrowser.Controller.Entities.TV.Episode => FeedbackStore.Series,
+                _ => null
+            };
+            var key = e.Item is MediaBrowser.Controller.Entities.TV.Episode ep ? ep.SeriesId.ToString("N") : e.Item?.Id.ToString("N");
+
+            // Stabile Referenz: der Treffer zählt auch, wenn der Titel unter einer früheren Item-ID empfohlen wurde
+            var reference = target == null ? null : FeedbackStore.StableRef(
+                target.GetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Tmdb),
+                target.GetProviderId(MediaBrowser.Model.Entities.MetadataProvider.Imdb),
+                target.Name,
+                target.ProductionYear);
 
             if (section == null)
             {
@@ -211,7 +226,7 @@ namespace Jellyfin.Plugin.LocalRecs.LiveTv
 
             foreach (var user in e.Users)
             {
-                _feedback.RecordWatched(user.Id, section, new[] { key }, now);
+                _feedback.RecordWatched(user.Id, section, new[] { key }, now, target?.Name, reference);
             }
         }
 

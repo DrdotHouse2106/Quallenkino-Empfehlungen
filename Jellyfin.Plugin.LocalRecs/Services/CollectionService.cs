@@ -66,6 +66,12 @@ namespace Jellyfin.Plugin.LocalRecs.Services
             for (var i = lastWatched + 1; i < parts.Count; i++)
             {
                 var part = parts[i];
+                // Gerade abgebrochen (z. B. kein Ton): nicht als nächsten Teil vorschlagen und auch nicht überspringen
+                if (part.Aborted)
+                {
+                    return null;
+                }
+
                 if (!part.Played && !part.Started && part.Likes != false)
                 {
                     return (i, parts[lastWatched].Title);
@@ -79,8 +85,9 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         /// Gets the next unwatched parts of the collections a user has started, with a reason.
         /// </summary>
         /// <param name="userId">User ID.</param>
+        /// <param name="abortedPauseDays">Pause for parts started and stopped right away (see <see cref="AbortedStart"/>), 0 = off.</param>
         /// <returns>Movie IDs and reasons, most recently continued collection first.</returns>
-        public IReadOnlyList<(Guid ItemId, string Reason)> GetNextParts(Guid userId)
+        public IReadOnlyList<(Guid ItemId, string Reason)> GetNextParts(Guid userId, int abortedPauseDays = 0)
         {
             var user = _userManager.GetUserById(userId);
             if (user == null)
@@ -119,6 +126,7 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                         Title = m.Name ?? string.Empty,
                         Played = data[i]?.Played == true,
                         Started = data[i] != null && data[i]!.PlaybackPositionTicks > 0,
+                        Aborted = data[i] is { } d && AbortedStart.IsAborted(d.PlayCount, d.Played, d.PlaybackPositionTicks, d.LastPlayedDate, DateTime.UtcNow, abortedPauseDays),
                         Likes = data[i]?.Likes
                     }).ToList();
 
@@ -151,6 +159,9 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
             /// <summary>Gets or sets a value indicating whether the part was started (in progress).</summary>
             public bool Started { get; set; }
+
+            /// <summary>Gets or sets a value indicating whether the part was started but stopped right away.</summary>
+            public bool Aborted { get; set; }
 
             /// <summary>Gets or sets the thumb rating.</summary>
             public bool? Likes { get; set; }

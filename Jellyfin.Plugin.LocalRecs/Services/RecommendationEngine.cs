@@ -334,9 +334,15 @@ namespace Jellyfin.Plugin.LocalRecs.Services
                 if (userData != null && itemMetadata.Type != LocalMediaType.Series
                     && AbortedStart.IsAborted(userData.PlayCount, userData.Played, userData.PlaybackPositionTicks, userData.LastPlayedDate, DateTime.UtcNow, config.AbortedStartPauseDays))
                 {
-                    _logger.LogDebug(
-                        userData.PlayCount >= 2 ? "Mehrfach gestartet ohne Fortschritt (technisches Problem?), vorerst nicht empfohlen: {Name}" : "Gerade abgebrochen, vorerst nicht empfohlen: {Name}",
-                        itemMetadata.Name);
+                    if (userData.PlayCount >= 2)
+                    {
+                        _logger.LogInformation("Mehrfach gestartet ohne Fortschritt ({Count}×, technisches Problem?), vorerst nicht empfohlen: {Name}", userData.PlayCount, itemMetadata.Name);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Gerade abgebrochen, vorerst nicht empfohlen: {Name}", itemMetadata.Name);
+                    }
+
                     continue;
                 }
 

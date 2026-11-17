@@ -7,9 +7,13 @@ namespace Jellyfin.Plugin.LocalRecs.Services
     /// </summary>
     public static class AbortedStart
     {
+        /// <summary>Starts without progress from which a movie is held back regardless of when it was last started.</summary>
+        public const int RepeatedStarts = 3;
+
         /// <summary>
         /// Whether a movie was started but stopped right away (play count without progress and not finished) within the
-        /// last <paramref name="pauseDays"/> days.
+        /// last <paramref name="pauseDays"/> days – or at least <see cref="RepeatedStarts"/> times (then regardless of age:
+        /// it does not play properly or is not wanted).
         /// </summary>
         /// <param name="playCount">Play count.</param>
         /// <param name="played">Whether it is marked as played.</param>
@@ -20,6 +24,6 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         /// <returns>True if it should not be recommended for now.</returns>
         public static bool IsAborted(int playCount, bool played, long positionTicks, DateTime? lastPlayed, DateTime now, int pauseDays)
             => pauseDays > 0 && playCount >= 1 && !played && positionTicks <= 0
-                && lastPlayed is DateTime last && now - last < TimeSpan.FromDays(pauseDays);
+                && (playCount >= RepeatedStarts || (lastPlayed is DateTime last && now - last < TimeSpan.FromDays(pauseDays)));
     }
 }

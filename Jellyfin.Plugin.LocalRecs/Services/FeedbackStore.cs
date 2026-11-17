@@ -268,6 +268,68 @@ namespace Jellyfin.Plugin.LocalRecs.Services
         }
 
         /// <summary>
+        /// Tidies up movie and series entries: fills in missing references and merges entries of the same title – also
+        /// under item IDs that no longer exist (file replaced or converted, re-scanned). Orphans are only merged when
+        /// exactly one current title of that name exists for the user, so remakes with the same name stay apart.
+        /// </summary>
+        /// <param name="refOfKey">Stable reference of the current item behind a key, or null if it no longer exists.</param>
+        /// <returns>Number of merged entries.</returns>
+        public int Consolidate(Func<string, string?> refOfKey)
+        {
+            ArgumentNullException.ThrowIfNull(refOfKey);
+
+            lock (_lock)
+            {
+                var entries = _data.Recommended.Where(kv => kv.Value.Section != LiveTv).ToList();
+                var alive = new Dictionary<string, string?>();
+                foreach (var (_, entry) in entries)
+                {
+                    var current = refOfKey(entry.Key);
+                    alive[entry.Key] = current;
+                    if (current != null && entry.Ref == null)
+                    {
+                        entry.Ref = current;
+                        _dirty = true;
+                    }
+                }
+
+                var merged = 0;
+                foreach (var group in entries.GroupBy(kv => (kv.Value.UserId, kv.Value.Section, Title: kv.Value.Title.Trim().ToLowerInvariant())))
+                {
+                    if (group.Key.Title.Length == 0 || group.Count() < 2)
+                    {
+                        continue;
+                    }
+
+                    var live = group.Where(kv => alive[kv.Value.Key] != null).ToList();
+                    if (live.Select(kv => alive[kv.Value.Key]).Distinct().Count() != 1)
+                    {
+                        continue;
+                    }
+
+                    // Ziel: ein Eintrag mit noch vorhandenem Item; die anderen gehen darin auf
+                    var keep = live.OrderByDescending(kv => kv.Value.LastRecommended).First().Value;
+                    foreach (var (id, entry) in group.Where(kv => !ReferenceEquals(kv.Value, keep)))
+                    {
+                        keep.Date = entry.Date < keep.Date ? entry.Date : keep.Date;
+                        keep.WatchedAt ??= entry.WatchedAt;
+                        _data.Recommended.Remove(id);
+                        merged++;
+                    }
+
+                    _dirty = true;
+                }
+
+                if (merged > 0)
+                {
+                    _logger.LogInformation("Auswertung: {Count} doppelte bzw. verwaiste Einträge zusammengeführt", merged);
+                }
+
+                return merged;
+            }
+        }
+
+        /// <summary>
         /// Builds the evaluation for the last days.
         /// </summary>
         /// <param name="days">Period in days.</param>

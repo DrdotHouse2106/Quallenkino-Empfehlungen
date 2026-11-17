@@ -70,6 +70,13 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
         }
 
         [Fact]
+        public void NextPart_NotRecommended_WhenStartedAndStoppedRightAway()
+        {
+            var parts = new[] { new Part { Title = "Teil 1", Played = true }, new Part { Title = "Teil 2", Aborted = true }, new Part { Title = "Teil 3" } };
+            CollectionService.FindNextPart(parts).Should().BeNull("weder Teil 2 noch übersprungen Teil 3");
+        }
+
+        [Fact]
         public void Reason_NamesMostSimilarWatchedTitle_OnlyAboveThreshold()
         {
             var watchedAnime = Guid.NewGuid();

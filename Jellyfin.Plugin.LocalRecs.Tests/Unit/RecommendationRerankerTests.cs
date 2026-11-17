@@ -80,6 +80,7 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
         [InlineData(1, false, 0L, 3, true)]
         [InlineData(5, false, 0L, 3, true)]
         [InlineData(1, false, 0L, 30, false)]
+        [InlineData(3, false, 0L, 140, true)]
         [InlineData(1, true, 0L, 3, false)]
         [InlineData(1, false, 100L, 3, false)]
         [InlineData(0, false, 0L, 3, false)]

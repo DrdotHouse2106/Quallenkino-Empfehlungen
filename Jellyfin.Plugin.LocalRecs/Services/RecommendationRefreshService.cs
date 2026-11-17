@@ -367,7 +367,7 @@ namespace Jellyfin.Plugin.LocalRecs.Services
 
                 // Filmreihen: nächster ungesehener Teil nach vorne
                 var nextParts = _collections != null && config.EnableCollectionNextParts
-                    ? _collections.GetNextParts(userId)
+                    ? _collections.GetNextParts(userId, config.AbortedStartPauseDays)
                     : Array.Empty<(Guid ItemId, string Reason)>();
                 if (nextParts.Count > 0)
                 {

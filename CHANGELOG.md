@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.62.1] - 2026-11-17
+
+### Fixed
+
+- Movies started and stopped right away were still recommended as the next part of a film series (`Nächster Teil nach …`); the next-part path now honours the pause too and does not skip to a later part.
+- `feedback.json`: existing entries are tidied up on every refresh – references filled in, duplicates and entries under no longer existing item IDs merged into the current item (only if exactly one current title of that name exists for the user).
+
+### Changed
+
+- From three starts without progress a movie is held back regardless of when it was last started; repeated starts are logged at information level.
+
 ## [12.62.0] - 2026-11-16
 
 ### Added

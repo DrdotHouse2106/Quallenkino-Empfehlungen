@@ -161,7 +161,8 @@ namespace Jellyfin.Plugin.LocalRecs.ScheduledTasks
 
                 _store.ReplaceAll(stored);
 
-                // Für die Auswertung merken, was wem empfohlen wurde
+                // Für die Auswertung merken, was wem empfohlen wurde – vorher alte Einträge ordnen (Referenz, neue Item-IDs)
+                _feedback.Consolidate(key => Guid.TryParse(key, out var itemId) ? FeedbackItem(itemId).Ref : null);
                 var now = DateTime.UtcNow;
                 foreach (var (userId, recs) in stored)
                 {

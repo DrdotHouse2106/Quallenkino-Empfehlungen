@@ -147,5 +147,34 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
         {
             FeedbackStore.StableRef(tmdb, imdb, " Matrix ", 1999).Should().Be(expected);
         }
+
+        [Fact]
+        public void Consolidate_MergesOrphansAndDuplicates_FillsReferences()
+        {
+            // Stand vor 12.62: derselbe Film unter alter und neuer Item-ID, ohne Referenz
+            string Entry(string key, string title, DateTime date) =>
+                $"\"{_user:N}|movies|{key}\": {{ \"UserId\": \"{_user}\", \"Section\": \"movies\", \"Key\": \"{key}\", \"Title\": \"{title}\", \"Date\": \"{date:O}\", \"ShownSince\": \"{date:O}\", \"LastRecommended\": \"{date:O}\" }}";
+            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            File.WriteAllText(_path, "{ \"Recommended\": { " + string.Join(", ", Entry("alt", "Film", Now.AddDays(-20)), Entry("neu", "Film", Now), Entry("x", "Anderer", Now)) + " }, \"Hits\": [] }");
+            var store = new FeedbackStore(NullLogger<FeedbackStore>.Instance, _path);
+            store.GetReport(30, Now).Sections.Single(s => s.Section == FeedbackStore.Movies).Recommended.Should().Be(3);
+
+            // „alt“ gibt es nicht mehr, „neu“ und „x“ schon
+            var merged = store.Consolidate(key => key switch { "neu" => "tmdb:1", "x" => "tmdb:2", _ => null });
+
+            merged.Should().Be(1);
+            store.GetReport(30, Now).Sections.Single(s => s.Section == FeedbackStore.Movies).Recommended.Should().Be(2);
+            store.RecordWatched(_user, FeedbackStore.Movies, new[] { "neu" }, Now).Should().BeTrue();
+            store.GetReport(30, Now).RecentHits.Single().RecommendedAt.Should().Be(Now.AddDays(-20), "das früheste Empfehlungsdatum bleibt");
+        }
+
+        [Fact]
+        public void Consolidate_KeepsRemakesWithSameNameApart()
+        {
+            var store = new FeedbackStore(NullLogger<FeedbackStore>.Instance, _path);
+            store.RecordRecommended(_user, FeedbackStore.Movies, new[] { ("a", "Dune"), ("b", "Dune"), ("c", "Dune") }, Now);
+
+            store.Consolidate(key => key switch { "a" => "tmdb:841", "b" => "tmdb:438631", _ => null }).Should().Be(0);
+        }
     }
 }

@@ -133,6 +133,10 @@ namespace Jellyfin.Plugin.LocalRecs
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FeedbackStore>>(),
                     Path.Combine(GetPluginDataPath(sp), "feedback.json")));
             serviceCollection.AddHostedService<LiveTvTrackingService>();
+            serviceCollection.AddSingleton(sp =>
+                new Problems.ProblemReportStore(
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Problems.ProblemReportStore>>(),
+                    Path.Combine(GetPluginDataPath(sp), "problemberichte.json")));
 
             // Erinnerungen an Live-TV-Sendungen (Kalender-Abo)
             serviceCollection.AddSingleton(sp =>

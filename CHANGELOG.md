@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.63.0] - 2026-11-17
+
+### Added
+
+- Problem reports from the apps: `POST /LocalRecs/ProblemReports` (signed-in user) with device, reason, playback method, tracks, detected audio output, player error and the last log lines. The title is taken from the server (only visible items), access keys are removed, at most 100 log lines and 10 reports per user and hour. Stored only on the server (`problemberichte.json`); new tab „Problemberichte“ and admin API (`GET`, `POST /{id}` with status/note, `DELETE /{id}`). Handled reports are removed after 90 days, at most 500 are kept.
+
 ## [12.62.1] - 2026-11-17
 
 ### Fixed

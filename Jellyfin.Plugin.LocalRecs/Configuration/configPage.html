@@ -19,6 +19,7 @@
                         <button is="emby-button" type="button" class="raised ui-btn-active tab-button-setup" data-tab="setup">Startseite</button>
                         <button is="emby-button" type="button" class="raised tab-button-settings" data-tab="settings">Einstellungen</button>
                         <button is="emby-button" type="button" class="raised tab-button-evaluation" data-tab="evaluation">Auswertung</button>
+                        <button is="emby-button" type="button" class="raised tab-button-problems" data-tab="problems">Problemberichte</button>
                         <button is="emby-button" type="button" class="raised tab-button-worlds" data-tab="worlds">Welten</button>
                         <button is="emby-button" type="button" class="raised tab-button-metadata" data-tab="metadata">Metadaten</button>
                         <button is="emby-button" type="button" class="raised tab-button-epg" data-tab="epg">Fernsehprogramm</button>
@@ -664,6 +665,20 @@
                         <div id="evaluationContainer"><p>Lade Auswertung...</p></div>
                     </div>
 
+                    <!-- Problemberichte Tab -->
+                    <div id="tab-problems" class="tab-content" style="display:none;">
+                        <h2 class="sectionTitle">Problemberichte</h2>
+                        <p>Bricht jemand einen Titel mehrmals gleich wieder ab, fragt die TV-App Quallenkino: „Ups, gab es hier ein technisches Problem?“. Mit „Melden“ (oder „Problem melden“ im Player) landet hier ein Bericht mit Gerät, Ton- und Untertitelspur, Direktwiedergabe oder Umwandlung, erkanntem Ton-Ausgang, Fehlermeldung und den letzten Log-Zeilen. Die Berichte bleiben auf dem Server (<code>problemberichte.json</code>), erledigte werden nach 90 Tagen gelöscht. API für Administratoren: <code>GET /LocalRecs/ProblemReports?status=offen</code>.</p>
+                        <div class="selectContainer">
+                            <select is="emby-select" id="problemStatus" label="Anzeigen">
+                                <option value="offen" selected>Offen</option>
+                                <option value="erledigt">Erledigt</option>
+                                <option value="">Alle</option>
+                            </select>
+                        </div>
+                        <div id="problemsContainer"><p>Lade Problemberichte...</p></div>
+                    </div>
+
                     <!-- Welten Tab -->
                     <div id="tab-worlds" class="tab-content" style="display:none;">
                         <h2 class="sectionTitle">Welten</h2>
@@ -881,6 +896,7 @@
                         { button: page.querySelector('.tab-button-setup'), tab: 'setup' },
                         { button: page.querySelector('.tab-button-settings'), tab: 'settings' },
                         { button: page.querySelector('.tab-button-evaluation'), tab: 'evaluation' },
+                        { button: page.querySelector('.tab-button-problems'), tab: 'problems' },
                         { button: page.querySelector('.tab-button-worlds'), tab: 'worlds' },
                         { button: page.querySelector('.tab-button-metadata'), tab: 'metadata' },
                         { button: page.querySelector('.tab-button-epg'), tab: 'epg' },
@@ -909,6 +925,10 @@
                             // Load benchmark results when switching to actions tab
                             if (item.tab === 'evaluation') {
                                 self.loadEvaluation(page);
+                            }
+
+                            if (item.tab === 'problems') {
+                                self.loadProblems(page);
                             }
 
                             if (item.tab === 'actions') {
@@ -1215,6 +1235,74 @@
                         .catch(function(error) {
                             console.error('Failed to load world:', error);
                             container.innerHTML = '<p style="color: #ff5252;">Welt konnte nicht geladen werden.</p>';
+                        });
+                },
+
+                /**
+                 * Loads the problem reports of the apps.
+                 */
+                loadProblems: function(page) {
+                    var self = this;
+                    var container = page.querySelector('#problemsContainer');
+                    var status = page.querySelector('#problemStatus').value;
+                    container.innerHTML = '<p>Lade Problemberichte...</p>';
+
+                    ApiClient.getJSON(ApiClient.getUrl('LocalRecs/ProblemReports', status ? { status: status } : {}))
+                        .then(function(reports) {
+                            if (!reports || reports.length === 0) {
+                                container.innerHTML = '<p>Keine Berichte.</p>';
+                                return;
+                            }
+
+                            var row = function(label, value) {
+                                return value ? '<div><b>' + label + ':</b> ' + self.escapeHtml(value) + '</div>' : '';
+                            };
+                            var html = '';
+                            reports.forEach(function(r) {
+                                html += '<div class="paperList" style="padding: 1em; margin-bottom: 1em;" data-id="' + self.escapeHtml(r.Id) + '">';
+                                html += '<h3 style="margin: 0 0 0.5em 0;">' + self.escapeHtml(r.ItemName || '(ohne Titel)') + ' – ' + self.escapeHtml(r.Status) + '</h3>';
+                                html += row('Zeit', new Date(r.Created).toLocaleString());
+                                html += row('Benutzer', r.UserName);
+                                html += row('Gerät', r.Device + (r.Client ? ' · ' + r.Client : ''));
+                                html += row('Anlass', r.Summary);
+                                html += row('Wiedergabe', r.Playback);
+                                html += row('Spuren', r.Tracks);
+                                html += row('Ton-Ausgang', r.Output);
+                                html += row('Fehler', r.Error);
+                                if (r.Log && r.Log.length) {
+                                    html += '<details><summary>Log (' + r.Log.length + ' Zeilen)</summary><pre style="white-space: pre-wrap; font-size: 0.8em;">' + self.escapeHtml(r.Log.join('\n')) + '</pre></details>';
+                                }
+                                html += '<div class="inputContainer" style="margin-top: 0.5em;"><input is="emby-input" type="text" class="problemNote" label="Notiz" /></div>';
+                                html += '<button is="emby-button" type="button" class="raised problemToggle">' + (r.Status === 'erledigt' ? 'Wieder öffnen' : 'Erledigt') + '</button> ';
+                                html += '<button is="emby-button" type="button" class="raised problemDelete">Löschen</button>';
+                                html += '</div>';
+                            });
+                            container.innerHTML = html;
+
+                            container.querySelectorAll('[data-id]').forEach(function(card) {
+                                var id = card.getAttribute('data-id');
+                                var report = reports.filter(function(r) { return r.Id === id; })[0];
+                                card.querySelector('.problemNote').value = report.Note || '';
+                                card.querySelector('.problemToggle').addEventListener('click', function() {
+                                    ApiClient.ajax({
+                                        type: 'POST',
+                                        url: ApiClient.getUrl('LocalRecs/ProblemReports/' + id),
+                                        data: JSON.stringify({ Status: report.Status === 'erledigt' ? 'offen' : 'erledigt', Note: card.querySelector('.problemNote').value }),
+                                        contentType: 'application/json'
+                                    }).then(function() { self.loadProblems(page); });
+                                });
+                                card.querySelector('.problemDelete').addEventListener('click', function() {
+                                    if (!confirm('Bericht löschen?')) {
+                                        return;
+                                    }
+                                    ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('LocalRecs/ProblemReports/' + id) })
+                                        .then(function() { self.loadProblems(page); });
+                                });
+                            });
+                        })
+                        .catch(function(error) {
+                            console.error('Failed to load problem reports:', error);
+                            container.innerHTML = '<p style="color: #ff5252;">Problemberichte konnten nicht geladen werden.</p>';
                         });
                 },
 
@@ -1778,6 +1866,10 @@
 
                 page.querySelector('#evaluationDays').addEventListener('change', function() {
                     LocalRecsConfig.loadEvaluation(page);
+                });
+
+                page.querySelector('#problemStatus').addEventListener('change', function() {
+                    LocalRecsConfig.loadProblems(page);
                 });
 
                 // Actions tab - link to scheduled tasks

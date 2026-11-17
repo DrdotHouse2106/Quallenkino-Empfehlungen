@@ -13,7 +13,7 @@
         "changelog": "Abgebrochene Filme auch nicht als nächster Teil, Auswertung aufgeräumt\n- Gleich abgebrochene Filme nicht mehr als „Nächster Teil“ einer Filmreihe\n- Ab drei Starts ohne Fortschritt dauerhaft zurückgestellt\n- feedback.json: doppelte und verwaiste Einträge werden zusammengeführt\n- BENÖTIGT Jellyfin 12.0 oder neuer",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://raw.githubusercontent.com/DrdotHouse2106/Quallenkino-Empfehlungen/main/release/jellyfin-plugin-localrecs-v12.62.1.zip",
-        "checksum": "67500ec7334033b6a6e995b755683269",
+        "checksum": "8722da1345d4d255780423d8e84d9b34",
         "timestamp": "2026-11-17T12:00:00Z"
       },
       {

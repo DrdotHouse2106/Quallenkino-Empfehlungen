@@ -66,6 +66,7 @@ namespace Jellyfin.Plugin.LocalRecs.Services
             for (var i = lastWatched + 1; i < parts.Count; i++)
             {
                 var part = parts[i];
+
                 // Gerade abgebrochen (z. B. kein Ton): nicht als nächsten Teil vorschlagen und auch nicht überspringen
                 if (part.Aborted)
                 {

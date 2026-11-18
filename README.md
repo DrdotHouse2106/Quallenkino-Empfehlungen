@@ -727,6 +727,8 @@ Jeweils **Symptom**, **Ursache** und **Lösung**. Wird laufend ergänzt.
 
 ## Selbst bauen
 
+**Veröffentlichen (ab 12.65.0):** Actions → „Release“ → *Run workflow* mit einem Kurztext. GitHub Actions baut und testet das Plugin, legt ein GitHub-Release mit dem ZIP an und trägt Version, Download-Adresse und Prüfsumme in `manifest.json` ein. Ältere Pakete liegen weiter unter `release/`.
+
 **Voraussetzungen:** .NET 10.0 SDK, Git
 
 ```bash

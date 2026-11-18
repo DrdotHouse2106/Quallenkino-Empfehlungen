@@ -123,7 +123,11 @@ namespace Jellyfin.Plugin.LocalRecs.Api
             }
 
             Response.Headers.CacheControl = "public, max-age=86400";
-            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            foreach (var header in Security.ImageSafety.ResponseHeaders)
+            {
+                Response.Headers[header.Key] = header.Value;
+            }
+
             return File(image.Data, image.ContentType);
         }
 

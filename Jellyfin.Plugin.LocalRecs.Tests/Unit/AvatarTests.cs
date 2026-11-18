@@ -128,5 +128,16 @@ namespace Jellyfin.Plugin.LocalRecs.Tests.Unit
             AvatarRenderer.DetectContentType(svg).Should().BeNull();
             AvatarRenderer.DetectContentType(new byte[3]).Should().BeNull();
         }
+
+        [Fact]
+        public void IconHosts_LogoHostsAndHttpsCatalogs_Only()
+        {
+            var hosts = AvatarService.AllowedIconHosts(new[] { "https://icons.example.org/icons.json", "http://192.168.1.10/icons.json", "/data/icons.json" });
+
+            hosts.Should().Contain("raw.githubusercontent.com").And.Contain("icons.example.org");
+            hosts.Should().NotContain("192.168.1.10", "nur https-Kataloge bringen ihren Host mit");
+            Jellyfin.Plugin.LocalRecs.Security.ImageSafety.IsAllowedHost(new System.Uri("http://icons.example.org/a.png"), hosts).Should().BeFalse("nur https");
+            Jellyfin.Plugin.LocalRecs.Security.ImageSafety.IsAllowedHost(new System.Uri("https://192.168.1.20/cam.jpg"), hosts).Should().BeFalse();
+        }
     }
 }

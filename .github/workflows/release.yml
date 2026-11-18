@@ -1,0 +1,92 @@
+# Baut das Plugin in GitHub Actions, legt ein GitHub-Release mit dem ZIP an und trägt die Version in manifest.json ein.
+# So ist nachvollziehbar, dass die DLL aus genau diesem Quellcode stammt (früher von Hand gebaut, release/*.zip).
+# Auslösen: Actions → „Release“ → Run workflow; Version kommt aus der .csproj, der Text aus dem Feld „changelog“.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: 'Kurztext für Jellyfin (Zeilen mit \n trennen)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+      - name: Version
+        id: version
+        run: echo "version=$(sed -n 's#.*<Version>\(.*\)</Version>.*#\1#p' Jellyfin.Plugin.LocalRecs/Jellyfin.Plugin.LocalRecs.csproj)" >> "$GITHUB_OUTPUT"
+      - name: Test
+        run: dotnet test --configuration Release
+      - name: Package
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          SHORT="${V%.0}"
+          mkdir -p out
+          (cd Jellyfin.Plugin.LocalRecs/bin/Release/net10.0 && zip -X "$GITHUB_WORKSPACE/out/jellyfin-plugin-localrecs-v$SHORT.zip" Jellyfin.Plugin.LocalRecs.dll)
+          md5sum out/*.zip
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: plugin
+          path: out/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Schreibrecht nur für Release und Manifest, nicht für Build und Tests
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: plugin
+          path: out
+      - name: GitHub-Release und manifest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          ZIP="$(ls out/*.zip)"
+          SHORT="${VERSION%.0}"
+          TAG="v$SHORT"
+          gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "Local Recommendations $SHORT" --notes "Änderungen siehe CHANGELOG.md" \
+            || gh release upload "$TAG" "$ZIP" --clobber
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$ZIP")"
+          MD5="$(md5sum "$ZIP" | cut -d' ' -f1)"
+          python3 - "$VERSION" "$URL" "$MD5" <<'PY'
+          import json, os, sys, datetime
+          version, url, md5 = sys.argv[1:4]
+          with open("manifest.json", encoding="utf-8") as f:
+              manifest = json.load(f)
+          versions = manifest[0]["versions"]
+          versions[:] = [v for v in versions if v["version"] != version]
+          versions.insert(0, {
+              "version": version,
+              "changelog": os.environ["CHANGELOG"].replace("\\n", "\n"),
+              "targetAbi": versions[0]["targetAbi"] if versions else "12.0.0.0",
+              "sourceUrl": url,
+              "checksum": md5,
+              "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          })
+          with open("manifest.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Release $SHORT"
+          git pull --rebase origin main
+          git push origin HEAD:main

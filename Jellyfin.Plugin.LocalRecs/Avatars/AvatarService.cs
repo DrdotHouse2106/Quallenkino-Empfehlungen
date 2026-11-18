@@ -26,6 +26,9 @@ namespace Jellyfin.Plugin.LocalRecs.Avatars
         public const int MaxImageBytes = 2 * 1024 * 1024;
 
         private const int MaxCatalogBytes = 1024 * 1024;
+
+        // Icons aus fremden Katalogen ohne Weiterleitungen laden (wie Welt-Logos)
+        private static readonly HttpClient NoRedirectClient = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         private static readonly TimeSpan CatalogReload = TimeSpan.FromHours(6);
         private static readonly TimeSpan CatalogRetry = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan ImageReload = TimeSpan.FromDays(7);
@@ -83,6 +86,26 @@ namespace Jellyfin.Plugin.LocalRecs.Avatars
             }
 
             return sources;
+        }
+
+        /// <summary>
+        /// Gets the hosts icons may be loaded from: the logo hosts and the hosts of https catalogs (like world logos).
+        /// </summary>
+        /// <param name="catalogs">Configured catalog sources.</param>
+        /// <returns>Allowed host names.</returns>
+        public static IReadOnlyList<string> AllowedIconHosts(IEnumerable<string> catalogs)
+        {
+            ArgumentNullException.ThrowIfNull(catalogs);
+            var hosts = Security.ImageSafety.LogoHosts.ToList();
+            foreach (var source in catalogs)
+            {
+                if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && !hosts.Contains(uri.IdnHost, StringComparer.OrdinalIgnoreCase))
+                {
+                    hosts.Add(uri.IdnHost);
+                }
+            }
+
+            return hosts;
         }
 
         /// <summary>
@@ -172,7 +195,20 @@ namespace Jellyfin.Plugin.LocalRecs.Avatars
 
             try
             {
-                var data = await ReadAsync(icon.Source, MaxImageBytes, TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);
+                // Icons aus dem Netz nur per https von den erlaubten Hosts, nie aus dem lokalen oder privaten Netz,
+                // ohne Weiterleitungen – sonst könnte ein Katalog Bilder aus dem Heimnetz anonym ausliefern lassen
+                if (AvatarCatalog.IsUrl(icon.Source))
+                {
+                    var uri = new Uri(icon.Source);
+                    if (!Security.ImageSafety.IsAllowedHost(uri, AllowedIconHosts(ConfiguredCatalogs()))
+                        || !await Security.ImageSafety.ResolvesToPublicAsync(uri, cancellationToken).ConfigureAwait(false))
+                    {
+                        _logger.LogWarning("Icon abgelehnt (nur https von erlaubten, öffentlichen Hosts): {Source}", icon.Source);
+                        return null;
+                    }
+                }
+
+                var data = await ReadAsync(icon.Source, MaxImageBytes, TimeSpan.FromSeconds(20), cancellationToken, noRedirect: true).ConfigureAwait(false);
                 var contentType = AvatarRenderer.DetectContentType(data);
                 if (contentType == null)
                 {
@@ -317,7 +353,7 @@ namespace Jellyfin.Plugin.LocalRecs.Avatars
             return _choices;
         }
 
-        private async Task<byte[]> ReadAsync(string source, int maxBytes, TimeSpan timeout, CancellationToken cancellationToken)
+        private async Task<byte[]> ReadAsync(string source, int maxBytes, TimeSpan timeout, CancellationToken cancellationToken, bool noRedirect = false)
         {
             if (!AvatarCatalog.IsUrl(source))
             {
@@ -330,20 +366,31 @@ namespace Jellyfin.Plugin.LocalRecs.Avatars
                 return await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false);
             }
 
-            var client = _httpClientFactory?.CreateClient() ?? new HttpClient();
-            client.Timeout = timeout;
-            using var response = await client.GetAsync(new Uri(source), HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(timeout);
+            HttpClient client;
+            if (noRedirect)
+            {
+                client = NoRedirectClient;
+            }
+            else
+            {
+                client = _httpClientFactory?.CreateClient() ?? new HttpClient();
+                client.Timeout = timeout;
+            }
+
+            using var response = await client.GetAsync(new Uri(source), HttpCompletionOption.ResponseHeadersRead, timeoutSource.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > maxBytes)
             {
                 throw new InvalidDataException("Datei zu groß: " + source);
             }
 
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var stream = await response.Content.ReadAsStreamAsync(timeoutSource.Token).ConfigureAwait(false);
             using var memory = new MemoryStream();
             var buffer = new byte[81920];
             int read;
-            while ((read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            while ((read = await stream.ReadAsync(buffer, timeoutSource.Token).ConfigureAwait(false)) > 0)
             {
                 memory.Write(buffer, 0, read);
                 if (memory.Length > maxBytes)

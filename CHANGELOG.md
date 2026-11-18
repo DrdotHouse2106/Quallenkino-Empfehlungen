@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.65.0] - 2026-11-18
+
+### Security
+
+- Profile icons (E-1): icons with a `url` are only loaded via https from the logo hosts and the hosts of https catalogs, never from local or private addresses (checked after DNS resolution) and without redirects – like world logos. Served with `nosniff` and a sandbox CSP.
+- Releases (E-2): the plugin package is now built, tested and published by GitHub Actions (workflow „Release“, GitHub release with ZIP, `manifest.json` updated automatically) instead of being built by hand and committed to `release/`.
+
 ## [12.64.0] - 2026-11-18
 
 ### Added

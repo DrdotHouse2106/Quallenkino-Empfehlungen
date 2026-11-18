@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [12.64.0] - 2026-11-18
+
+### Added
+
+- Web module: „Alle Titel durchstöbern“ at the bottom of the home page (same as in the TV apps): all movies and series as banner cards, the large info area at the top shows the title under the mouse or focus and stays in place while scrolling. Filter movies/series, sort A–Z, recently added, release year or rating; more titles load while scrolling.
+
 ## [12.63.0] - 2026-11-17
 
 ### Added

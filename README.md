@@ -365,6 +365,8 @@ Im Browser und in den Jellyfin-Apps für iOS und Android kann die Startseite wie
 - **Lange Beschreibungen** (z. B. YouTube-Kanäle mit vielen Links) zeigt die Detailansicht ab 12.29.2 auf 4 Zeilen gekürzt mit „Mehr“; lange Links brechen um, die Folgenliste bleibt auch auf dem Handy in der Bildschirmbreite.
 - Skript und Stylesheet werden mit der Plugin-Version im Link geladen (`?v=…`). So kommen Updates auch in Apps mit Web-Zwischenspeicher (z. B. der iOS-App) sofort an.
 
+**Alle Titel durchstöbern (ab 12.64.0):** Ganz unten auf der Startseite führt ein Link zu allen Filmen und Serien – gleich wie in den TV-Apps Quallenkino (Android TV ab 1.47.0, webOS ab 1.24.0): Banner-Karten, oben der große Infobereich zum Titel unter der Maus, Filter Filme/Serien und Sortierung A–Z, neu hinzugefügt, Erscheinungsjahr oder Bewertung; weitere Titel laden beim Scrollen nach.
+
 ### „Wer schaut?“ – Profilauswahl (ab 12.21.0)
 
 Damit jede Person ihre eigenen Vorschläge bekommt, zeigt Jellyfin Web beim Öffnen eine Profilauswahl mit Profilbildern – wie bei Streaming-Diensten. Einschalten im Reiter **„Einstellungen“**, Abschnitt Jellyfin Web: **„Wer schaut?“ – Profilauswahl** (Standard: aus; benötigt ebenfalls **File Transformation**).

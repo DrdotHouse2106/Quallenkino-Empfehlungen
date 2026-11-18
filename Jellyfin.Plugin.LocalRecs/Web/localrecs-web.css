@@ -3343,3 +3343,41 @@ body.lr-tidy-header #jellyfinEnhancedSettingsLink {
     font-size: 0.8em;
     opacity: 0.8;
 }
+
+/* „Alle Titel durchstöbern“: Link unter den Reihen und Seite mit Banner-Karten */
+.lr-footer {
+    flex-direction: column;
+    align-items: center;
+    gap: 1em;
+}
+
+.lr-all-link {
+    font-size: 1.1em;
+}
+
+.lr-all-count {
+    padding: 0 2em 0.6em;
+    opacity: 0.8;
+}
+
+.lr-all-titles .lr-all-hero {
+    /* Infobereich bleibt beim Scrollen oben stehen (wie in den TV-Apps) */
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    min-height: 20em;
+    background: var(--lr-bg, #101010);
+}
+
+.lr-all-grid {
+    grid-template-columns: repeat(auto-fill, minmax(14em, 1fr));
+    padding: 0 2em 2em;
+}
+
+.lr-all-grid .lr-card-landscape {
+    width: auto;
+}
+
+.lr-all-more {
+    height: 1px;
+}

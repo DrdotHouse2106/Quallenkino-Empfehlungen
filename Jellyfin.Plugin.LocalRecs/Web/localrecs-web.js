@@ -2850,6 +2850,126 @@
         return card;
     }
 
+    /**
+     * „Alle Titel“ (Link ganz unten auf der Startseite, gleich wie in den TV-Apps): alle Filme und Serien als Banner-Karten,
+     * oben der große Infobereich zum Titel unter der Maus bzw. dem Fokus – so blättert man durch die Banner.
+     * Filter Filme/Serien, Sortierung, lädt beim Weiterscrollen nach.
+     */
+    function openAllTitles() {
+        var PAGE = 60;
+        var dialog = overlayShell('lr-world-page lr-all-titles');
+        var heroHolder = el('div', 'lr-all-hero');
+        dialog.appendChild(heroHolder);
+        var shownId = null;
+        var heroTimer = null;
+        function showHero(item) {
+            if (!item || item.Id === shownId) {
+                return;
+            }
+            clearTimeout(heroTimer);
+            // Kurz warten, damit schnelles Überfahren keine Bilderflut auslöst
+            heroTimer = setTimeout(function () {
+                shownId = item.Id;
+                heroHolder.innerHTML = '';
+                heroHolder.appendChild(heroElement(item, { trailer: false, actions: false }));
+            }, shownId ? 250 : 0);
+        }
+        var type = 'Movie,Series';
+        var sort = 'SortName';
+        var controls = el('div', 'lr-world-controls');
+        var count = el('div', 'lr-all-count', 'Alle Titel');
+        function chipGroup(options, current, onPick) {
+            var group = el('div', 'lr-chips');
+            options.forEach(function (pair) {
+                var chip = button('lr-chip' + (pair[0] === current ? ' lr-chip-on' : ''), null, pair[1], function () {
+                    group.querySelectorAll('.lr-chip').forEach(function (c) {
+                        c.classList.toggle('lr-chip-on', c === chip);
+                    });
+                    onPick(pair[0]);
+                });
+                group.appendChild(chip);
+            });
+            return group;
+        }
+        controls.appendChild(chipGroup([['Movie,Series', 'Filme und Serien'], ['Movie', 'Filme'], ['Series', 'Serien']], type, function (value) {
+            type = value;
+            load(true);
+        }));
+        controls.appendChild(chipGroup([['SortName', 'A–Z'], ['DateCreated', 'Neu hinzugefügt'], ['ProductionYear', 'Erscheinungsjahr'], ['CommunityRating', 'Bewertung']], sort, function (value) {
+            sort = value;
+            load(true);
+        }));
+        dialog.appendChild(count);
+        dialog.appendChild(controls);
+        var grid = el('div', 'lr-grid lr-all-grid');
+        dialog.appendChild(grid);
+        var sentinel = el('div', 'lr-all-more');
+        dialog.appendChild(sentinel);
+        var loaded = 0;
+        var total = null;
+        var busy = false;
+        var run = 0;
+        function load(reset) {
+            if (busy && !reset) {
+                return;
+            }
+            var current = ++run;
+            busy = true;
+            if (reset) {
+                loaded = 0;
+                total = null;
+                grid.innerHTML = '';
+                grid.appendChild(el('div', 'lr-spinner'));
+            }
+            var order = sort === 'SortName' ? 'Ascending' : 'Descending';
+            getJson(itemsQuery('Items?IncludeItemTypes=' + type + '&Recursive=true&SortBy=' + sort + ',SortName&SortOrder=' + order
+                + '&StartIndex=' + loaded + '&Limit=' + PAGE)).then(function (result) {
+                if (current !== run) {
+                    return;
+                }
+                busy = false;
+                if (reset) {
+                    grid.innerHTML = '';
+                }
+                var list = itemsOf(result);
+                total = result && result.TotalRecordCount !== undefined ? result.TotalRecordCount : loaded + list.length;
+                count.textContent = 'Alle Titel · ' + total + ' Titel';
+                list.forEach(function (item) {
+                    var card = landscapeCard(slim(item), false);
+                    card.addEventListener('mouseenter', function () {
+                        showHero(item);
+                    });
+                    card.addEventListener('focusin', function () {
+                        showHero(item);
+                    });
+                    grid.appendChild(card);
+                });
+                if (reset && list.length) {
+                    showHero(list[0]);
+                }
+                if (reset && !list.length) {
+                    grid.appendChild(el('div', 'lr-empty', 'Keine Titel gefunden.'));
+                }
+                loaded += list.length;
+            }, function () {
+                busy = false;
+                if (reset) {
+                    grid.innerHTML = '';
+                    grid.appendChild(el('div', 'lr-empty', 'Die Titel konnten nicht geladen werden.'));
+                }
+            });
+        }
+        // Weiterscrollen: nächste Seite, sobald das Ende in Sicht kommt
+        if (window.IntersectionObserver) {
+            new IntersectionObserver(function (entries) {
+                if (entries[0].isIntersecting && total !== null && loaded < total) {
+                    load(false);
+                }
+            }, { root: dialog.parentNode, rootMargin: '600px' }).observe(sentinel);
+        }
+        load(true);
+    }
+
     function openWorld(world) {
         var dialog = overlayShell('lr-world-page');
         var heroItem = { Id: world.ImageItemId || '', Name: world.Name, Type: 'World', TrailerId: world.TrailerId };
@@ -3921,6 +4041,8 @@
         });
         if (!root.querySelector('.lr-footer')) {
             var footer = el('div', 'lr-footer');
+            // Ganz unten „Alle Titel durchstöbern“ (gleich wie in den TV-Apps)
+            footer.appendChild(button('lr-chip lr-chip-on lr-all-link', 'search', 'Alle Titel durchstöbern', openAllTitles));
             footer.appendChild(button('lr-btn-link', 'dashboard', 'Jellyfin-Startseite anzeigen', function () {
                 storageSet('lrWeb.classic.' + uid, '1');
                 deactivate();
